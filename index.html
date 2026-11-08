@@ -89,6 +89,7 @@ if (location.hash.startsWith('#sel=')) {
 save();
 
 let tab = 'all', q = '', types = new Set();
+const scrollPos = {};
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -236,9 +237,10 @@ document.addEventListener('click', ev => {
     save();
     const y = window.scrollY; render(); window.scrollTo(0, y);
   } else if (b.dataset.tab) {
+    scrollPos[tab] = window.scrollY;  // each tab comes back where it was left
     tab = b.dataset.tab;
     document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
-    render(); window.scrollTo(0, 0);
+    render(); window.scrollTo(0, scrollPos[tab] || 0);
   } else if (b.dataset.type) {
     const t = b.dataset.type;
     types.has(t) ? types.delete(t) : types.add(t);
