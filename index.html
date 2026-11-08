@@ -51,6 +51,16 @@ h3{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute
 .month.over{outline:2px dashed var(--accent);background:var(--accent-soft)}
 .month.no{opacity:.35}
 .warn{font-size:12px;color:var(--accent);margin-top:3px}
+.balance{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+.bal{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:4px 8px;font-size:13px;cursor:pointer;text-align:center;min-width:52px}
+.bal b{display:block;font-size:17px}
+.bal.zero{color:var(--muted);opacity:.6}
+.n{color:var(--muted);font-weight:normal;font-size:15px}
+#out.compact .sum,#out.compact .links,#out.compact .mv{display:none}
+#out.compact .ev{padding:5px 10px;margin:4px 0;align-items:center}
+#out.compact .star{width:26px;height:26px;font-size:18px}
+#out.compact .t{display:inline;font-size:15px}
+#out.compact .meta{display:inline;margin-left:6px}
 .drop{color:var(--muted);font-size:14px;padding:12px 0;text-align:center}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
@@ -91,6 +101,8 @@ save();
 
 let tab = 'all', q = '', types = new Set();
 const scrollPos = {};
+let compact = false;  // "Ma sélection" one line per pick; remembered per browser
+try { compact = localStorage.getItem('programme-culturel-compact') === '1'; } catch (e) {}
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -141,6 +153,7 @@ function renderAll() {
   return h || '<div class="empty">Aucun événement ne correspond.</div>';
 }
 
+const SHORT_MONTHS = ['', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 const monthName = k => `${D.monthNames[+k.slice(5)]} ${k.slice(0, 4)}`;
 // the programme's months (today's month → end of season) an event runs in
 const validMonths = e => D.months.map(m => m.key).filter(k => k >= e.start.slice(0, 7) && k <= e.end.slice(0, 7));
@@ -184,9 +197,14 @@ function renderSel() {
     <button class="btn alt" data-act="doc">Télécharger (Word)</button>
     <button class="btn alt" data-act="link">Lien vers un autre appareil</button>
     <button class="btn alt" data-act="clear">Tout effacer</button></div>`;
+  // picks per month over the whole season, to see the balance at a glance (tap: jump there)
+  const n = Object.fromEntries(g.map(([, items, k]) => [k, items.length]));
+  h += `<div class="balance">${D.months.map(m => `<button class="bal${n[m.key] ? '' : ' zero'}" data-jump="${m.key}">`
+    + `${SHORT_MONTHS[+m.key.slice(5)]}<b>${n[m.key] || 0}</b></button>`).join('')}
+    <button class="bal" data-act="compact">${compact ? 'Vue<b>détaillée</b>' : 'Vue<b>compacte</b>'}</button></div>`;
   for (const [month, items, k] of g) {
     const shown = items.filter(([, e]) => matches(e));
-    if (shown.length) h += `<section class="month" data-key="${k}"><h2>${esc(month)}</h2>`
+    if (shown.length) h += `<section class="month" data-key="${k}"><h2>${esc(month)} <span class="n">· ${items.length}</span></h2>`
       + shown.map(([id, e]) => card(id, e, false)).join('') + '</section>';
   }
   return h;
@@ -195,6 +213,7 @@ function renderSel() {
 function render() {
   $('#count').textContent = Object.keys(sel).length;
   $('#out').innerHTML = tab === 'all' ? renderAll() : renderSel();
+  $('#out').classList.toggle('compact', tab === 'sel' && compact);
 }
 
 function exportText() {
@@ -270,6 +289,14 @@ document.addEventListener('click', ev => {
     const picks = Object.entries(sel).filter(([id]) => D.events[id]).map(([id, e]) => [id, e.month]);
     copy(location.origin + location.pathname + '#sel=' + encodeURIComponent(JSON.stringify(picks)),
          'Lien copié : ouvrez-le sur l\'autre appareil');
+  }
+  else if (b.dataset.act === 'compact') {
+    compact = !compact; try { localStorage.setItem('programme-culturel-compact', compact ? '1' : '0'); } catch (e) {}
+    render();
+  }
+  else if (b.dataset.jump) {
+    const m = document.querySelector(`.month[data-key="${b.dataset.jump}"]`);
+    if (m) window.scrollTo(0, m.getBoundingClientRect().top + window.scrollY - $('header').offsetHeight - 8);
   }
   else if (b.dataset.act === 'clear' && confirm('Effacer toute la sélection ?')) { sel = {}; save(); render(); }
 });
