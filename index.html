@@ -68,6 +68,15 @@ try { sel = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
 // (keeping the month it was starred in)
 for (const id in sel) if (D.events[id]) sel[id] = {...D.events[id], month: sel[id].month};
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(sel)); } catch (e) {} };
+// a "#sel=" link made on another device adds its picks to this one
+let imported = 0;
+if (location.hash.startsWith('#sel=')) {
+  try {
+    for (const [id, month] of JSON.parse(decodeURIComponent(location.hash.slice(5))))
+      if (D.events[id] && !sel[id]) { sel[id] = {...D.events[id], month}; imported++; }
+  } catch (e) {}
+  history.replaceState(null, '', location.pathname);
+}
 save();
 
 let tab = 'all', q = '', types = new Set();
@@ -132,6 +141,7 @@ function renderSel() {
     <button class="btn" data-act="copy">Copier pour WhatsApp</button>
     <button class="btn alt" data-act="txt">Télécharger (.txt)</button>
     <button class="btn alt" data-act="doc">Télécharger (Word)</button>
+    <button class="btn alt" data-act="link">Lien vers un autre appareil</button>
     <button class="btn alt" data-act="clear">Tout effacer</button></div>`;
   for (const [month, items] of g) {
     const shown = items.filter(([, e]) => matches(e));
@@ -183,13 +193,13 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 1800);
 }
 
-async function copy(text) {
+async function copy(text, msg = 'Copié : collez dans WhatsApp') {
   try { await navigator.clipboard.writeText(text); }
   catch (e) {
     const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
     ta.select(); document.execCommand('copy'); ta.remove();
   }
-  toast('Copié : collez dans WhatsApp');
+  toast(msg);
 }
 
 $('#chips').innerHTML = D.types.filter(t => Object.values(D.events).some(e => e.type === t))
@@ -213,10 +223,16 @@ document.addEventListener('click', ev => {
   } else if (b.dataset.act === 'copy') copy(exportText());
   else if (b.dataset.act === 'txt') download('ma-selection.txt', exportText(), 'text/plain;charset=utf-8');
   else if (b.dataset.act === 'doc') download('ma-selection.doc', exportDoc(), 'application/msword');
+  else if (b.dataset.act === 'link') {
+    const picks = Object.entries(sel).filter(([id]) => D.events[id]).map(([id, e]) => [id, e.month]);
+    copy(location.origin + location.pathname + '#sel=' + encodeURIComponent(JSON.stringify(picks)),
+         'Lien copié : ouvrez-le sur l\'autre appareil');
+  }
   else if (b.dataset.act === 'clear' && confirm('Effacer toute la sélection ?')) { sel = {}; save(); render(); }
 });
 $('#q').addEventListener('input', ev => { q = norm(ev.target.value.trim()); render(); });
 render();
+if (imported) toast(`${imported} événement(s) ajouté(s) à votre sélection`);
 </script>
 </body>
 </html>
