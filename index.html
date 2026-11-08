@@ -116,16 +116,21 @@ let imported = 0;
 const addPick = (id, month, final) => {
   if (D.events[id] && !sel[id]) { sel[id] = {...D.events[id], month, final: !!final}; imported++; }
 };
-try {
-  if (location.hash.startsWith('#sel=')) {
-    for (const [id, month, final] of JSON.parse(decodeURIComponent(location.hash.slice(5)))) addPick(id, month, final);
-  } else if (location.hash.startsWith('#s=')) {
-    const byCode = {};
-    for (const id in D.events) byCode[code(id)] = id;
-    for (const m of location.hash.slice(3).matchAll(/([0-9a-z]{6})([0-9a-z]{2})([01])/g))
-      if (byCode[m[1]]) addPick(byCode[m[1]], codeMonth(m[2]), m[3] === '1');
-  }
-} catch (e) {}
+// link: a whole shared link or just its "#…" part (also pasted by hand, see "Importer")
+function importLink(link) {
+  const i = link.indexOf('#'), hash = i < 0 ? '' : link.slice(i);
+  try {
+    if (hash.startsWith('#sel=')) {
+      for (const [id, month, final] of JSON.parse(decodeURIComponent(hash.slice(5)))) addPick(id, month, final);
+    } else if (hash.startsWith('#s=')) {
+      const byCode = {};
+      for (const id in D.events) byCode[code(id)] = id;
+      for (const m of hash.slice(3).matchAll(/([0-9a-z]{6})([0-9a-z]{2})([01])/g))
+        if (byCode[m[1]]) addPick(byCode[m[1]], codeMonth(m[2]), m[3] === '1');
+    }
+  } catch (e) {}
+}
+importLink(location.hash);
 if (location.hash.startsWith('#s')) history.replaceState(null, '', location.pathname);
 save();
 
@@ -230,13 +235,16 @@ function moveTo(id, k) {
 }
 
 function renderSel() {
-  if (!Object.keys(sel).length) return '<div class="empty">Touchez ☆ sur un événement pour l\'ajouter ici.</div>';
+  if (!Object.keys(sel).length) return `<div class="empty">Touchez ☆ sur un événement pour l'ajouter ici.<br><br>
+    Votre sélection est sur un autre appareil ou dans Safari ?
+    <button class="btn alt" data-act="import">Importer un lien</button></div>`;
   const g = grouped(finalOnly), nFinal = Object.values(sel).filter(e => e.final).length;
   let h = `<div class="actions">
     <button class="btn" data-act="copy">Copier pour WhatsApp</button>
     <button class="btn alt" data-act="txt">Télécharger (.txt)</button>
     <button class="btn alt" data-act="doc">Télécharger (Word)</button>
     <button class="btn alt" data-act="link">Lien vers un autre appareil</button>
+    <button class="btn alt" data-act="import">Importer un lien</button>
     <button class="btn alt" data-act="compact">${compact ? 'Vue détaillée' : 'Vue compacte'}</button>
     <button class="btn alt" data-act="clear">Tout effacer</button></div>
     <div class="seg"><button data-act="all-picks" class="${finalOnly ? '' : 'on'}">Tout (${Object.keys(sel).length})</button>`
@@ -357,6 +365,14 @@ document.addEventListener('click', ev => {
     finalOnly = b.dataset.act === 'final-only';
     try { localStorage.setItem('programme-culturel-final-only', finalOnly ? '1' : '0'); } catch (e) {}
     render();
+  }
+  else if (b.dataset.act === 'import') {
+    // an iPhone home-screen icon has its own storage, apart from Safari, and links
+    // always open in Safari: pasting the link here is how picks get into it
+    const link = prompt('Collez ici le lien copié avec « Lien vers un autre appareil » :');
+    if (!link) return;
+    imported = 0; importLink(link.trim()); save(); render();
+    toast(imported ? `${imported} événement(s) ajouté(s) à votre sélection` : 'Aucun nouvel événement dans ce lien');
   }
   else if (b.dataset.act === 'compact') {
     compact = !compact; try { localStorage.setItem('programme-culturel-compact', compact ? '1' : '0'); } catch (e) {}
