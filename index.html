@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Programme culturel — saison 2026/27</title>
 <style>
-:root{--bg:#faf8f5;--card:#fff;--text:#1d1b19;--muted:#6f6a64;--line:#e6e1da;--accent:#b4462f;--accent-soft:#f6e3dd;--star:#d99a00}
-@media (prefers-color-scheme:dark){:root{--bg:#171615;--card:#211f1d;--text:#eeeae5;--muted:#a19b94;--line:#35322e;--accent:#e57a5f;--accent-soft:#3a2620;--star:#f2b81c}}
+:root{--ok:#2f7d4f;--bg:#faf8f5;--card:#fff;--text:#1d1b19;--muted:#6f6a64;--line:#e6e1da;--accent:#b4462f;--accent-soft:#f6e3dd;--star:#d99a00}
+@media (prefers-color-scheme:dark){:root{--ok:#4fae75;--bg:#171615;--card:#211f1d;--text:#eeeae5;--muted:#a19b94;--line:#35322e;--accent:#e57a5f;--accent-soft:#3a2620;--star:#f2b81c}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 16px 10px}
@@ -64,6 +64,15 @@ body.sel-tab .sub{display:none}
 #out.compact .star{width:26px;height:26px;font-size:18px}
 #out.compact .t{display:inline;font-size:15px}
 #out.compact .meta{display:inline;margin-left:6px}
+.keep{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;padding:2px 10px;margin-top:6px;cursor:pointer}
+.keep.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.ev.final{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
+#out.compact .keep{margin:0 0 0 6px}
+.seg{display:flex;gap:0;margin:0 0 6px}
+.seg button{border:1px solid var(--line);background:var(--card);color:var(--text);padding:6px 12px;font-size:14px;cursor:pointer}
+.seg button:first-child{border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0;border-left:none}
+.seg button.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.bal.full{border-color:var(--ok)}
 .drop{color:var(--muted);font-size:14px;padding:12px 0;text-align:center}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
@@ -90,14 +99,14 @@ let sel = {};
 try { sel = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
 // refresh stored copies with this week's details
 // (keeping the month it was starred in)
-for (const id in sel) if (D.events[id]) sel[id] = {...D.events[id], month: sel[id].month};
+for (const id in sel) if (D.events[id]) sel[id] = {...D.events[id], month: sel[id].month, final: sel[id].final};
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(sel)); } catch (e) {} };
 // a "#sel=" link made on another device adds its picks to this one
 let imported = 0;
 if (location.hash.startsWith('#sel=')) {
   try {
-    for (const [id, month] of JSON.parse(decodeURIComponent(location.hash.slice(5))))
-      if (D.events[id] && !sel[id]) { sel[id] = {...D.events[id], month}; imported++; }
+    for (const [id, month, final] of JSON.parse(decodeURIComponent(location.hash.slice(5))))
+      if (D.events[id] && !sel[id]) { sel[id] = {...D.events[id], month, final: !!final}; imported++; }
   } catch (e) {}
   history.replaceState(null, '', location.pathname);
 }
@@ -105,8 +114,12 @@ save();
 
 let tab = 'all', q = '', types = new Set();
 const scrollPos = {};
+// "Retenus": the final cut, at most MAX_FINAL per month (≈ 3 shows a week)
+const MAX_FINAL = 12;
+let finalOnly = false;
 let compact = false;  // "Ma sélection" one line per pick; remembered per browser
 try { compact = localStorage.getItem('programme-culturel-compact') === '1'; } catch (e) {}
+try { finalOnly = localStorage.getItem('programme-culturel-final-only') === '1'; } catch (e) {}
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -137,10 +150,12 @@ function card(id, e, short, month) {
     if (elsewhere.length) h += `<div class="warn">⚠ Ce spectacle est aussi dans votre sélection en ${elsewhere.join(', ')}</div>`;
     if (here) h += `<div class="warn">⚠ Ce spectacle est sélectionné deux fois ce mois-ci</div>`;
   }
+  if (tab === 'sel') h += `<button class="keep${e.final ? ' on' : ''}">${e.final ? '✓ Retenu' : 'Retenir'}</button>`;
   if (tab === 'sel' && validMonths(e).length > 1)
     h += `<div class="mv">Mois : <select>${validMonths(e).map(k =>
       `<option value="${k}"${k === monthOf(e) ? ' selected' : ''}>${monthName(k)}</option>`).join('')}</select></div>`;
   h += '</div></div>';
+  if (tab === 'sel' && e.final) h = h.replace('<div class="ev sel', '<div class="ev sel final');
   return tab === 'sel' && validMonths(e).length > 1 ? h.replace('<div class="ev', '<div draggable="true" class="ev') : h;
 }
 
@@ -168,9 +183,11 @@ function monthOf(e) {
   return ok[0] || (e.start > new Date().toISOString().slice(0, 10) ? e.start.slice(0, 7) : D.months[0].key);
 }
 
-function grouped() {
+const finalsIn = k => Object.values(sel).filter(e => e.final && monthOf(e) === k).length;
+
+function grouped(onlyFinal = false) {
   const groups = {};
-  for (const [id, e] of Object.entries(sel)) (groups[monthOf(e)] ||= []).push([id, e]);
+  for (const [id, e] of Object.entries(sel)) if (!onlyFinal || e.final) (groups[monthOf(e)] ||= []).push([id, e]);
   return Object.keys(groups).sort().map(k =>
     [monthName(k), groups[k].sort((a, b) => (a[1].start + a[1].title).localeCompare(b[1].start + b[1].title)), k]);
 }
@@ -188,23 +205,30 @@ function twinMonths(id, e) {
 
 function moveTo(id, k) {
   if (!sel[id] || !validMonths(sel[id]).includes(k)) return;
+  if (sel[id].final && monthOf(sel[id]) !== k && finalsIn(k) >= MAX_FINAL) {
+    render(); return toast(`Déjà ${MAX_FINAL} retenus en ${monthName(k).toLowerCase()}`);
+  }
   sel[id].month = k; save(); render();
   toast(`Déplacé en ${monthName(k).toLowerCase()}`);
 }
 
 function renderSel() {
-  const g = grouped();
-  if (!g.length) return '<div class="empty">Touchez ☆ sur un événement pour l\'ajouter ici.</div>';
+  if (!Object.keys(sel).length) return '<div class="empty">Touchez ☆ sur un événement pour l\'ajouter ici.</div>';
+  const g = grouped(finalOnly), nFinal = Object.values(sel).filter(e => e.final).length;
   let h = `<div class="actions">
     <button class="btn" data-act="copy">Copier pour WhatsApp</button>
     <button class="btn alt" data-act="txt">Télécharger (.txt)</button>
     <button class="btn alt" data-act="doc">Télécharger (Word)</button>
     <button class="btn alt" data-act="link">Lien vers un autre appareil</button>
     <button class="btn alt" data-act="compact">${compact ? 'Vue détaillée' : 'Vue compacte'}</button>
-    <button class="btn alt" data-act="clear">Tout effacer</button></div>`;
+    <button class="btn alt" data-act="clear">Tout effacer</button></div>
+    <div class="seg"><button data-act="all-picks" class="${finalOnly ? '' : 'on'}">Tout (${Object.keys(sel).length})</button>`
+    + `<button data-act="final-only" class="${finalOnly ? 'on' : ''}">Retenus (${nFinal})</button></div>`;
+  if (finalOnly && !nFinal) h += `<div class="empty">Touchez « Retenir » sur vos favoris (${MAX_FINAL} au plus par mois) : seuls ceux-là s'afficheront ici, et seront exportés.</div>`;
   for (const [month, items, k] of g) {
     const shown = items.filter(([, e]) => matches(e));
-    if (shown.length) h += `<section class="month" data-key="${k}"><h2>${esc(month)} <span class="n">· ${items.length}</span></h2>`
+    if (shown.length) h += `<section class="month" data-key="${k}"><h2>${esc(month)} <span class="n">· ${items.length}`
+      + ` · ✓ ${finalsIn(k)}/${MAX_FINAL}</span></h2>`
       + shown.map(([id, e]) => card(id, e, false)).join('') + '</section>';
   }
   return h;
@@ -217,14 +241,16 @@ function render() {
   document.body.classList.toggle('sel-tab', tab === 'sel');
   // picks per month over the season, in the sticky header so it stays in view (tap: jump there)
   const n = {};
-  for (const e of Object.values(sel)) n[monthOf(e)] = (n[monthOf(e)] || 0) + 1;
+  for (const e of Object.values(sel)) if (!finalOnly || e.final) n[monthOf(e)] = (n[monthOf(e)] || 0) + 1;
+  // in "Retenus" each month reads n/12
   $('#balance').innerHTML = tab === 'sel' && Object.keys(sel).length ? D.months.map(m =>
-    `<button class="bal${n[m.key] ? '' : ' zero'}" data-jump="${m.key}">${SHORT_MONTHS[+m.key.slice(5)]}<b>${n[m.key] || 0}</b></button>`).join('') : '';
+    `<button class="bal${n[m.key] ? '' : ' zero'}${finalOnly && n[m.key] >= MAX_FINAL ? ' full' : ''}" data-jump="${m.key}">`
+    + `${SHORT_MONTHS[+m.key.slice(5)]}<b>${n[m.key] || 0}${finalOnly ? '/' + MAX_FINAL : ''}</b></button>`).join('') : '';
 }
 
 function exportText() {
-  let t = '*Ma sélection culturelle*\n';
-  for (const [month, items] of grouped()) {
+  let t = `*Ma sélection culturelle${finalOnly ? ' (finale)' : ''}*\n`;
+  for (const [month, items] of grouped(finalOnly)) {
     t += `\n*${month}*\n`;
     for (const [, e] of items) {
       t += `• ${e.title} (${e.type.toLowerCase()}) : ${e.venue}, ${when(e)}\n`;
@@ -235,8 +261,8 @@ function exportText() {
 }
 
 function exportDoc() {
-  let b = '<h1>Ma sélection culturelle</h1>';
-  for (const [month, items] of grouped()) {
+  let b = `<h1>Ma sélection culturelle${finalOnly ? ' (finale)' : ''}</h1>`;
+  for (const [month, items] of grouped(finalOnly)) {
     b += `<h2>${esc(month)}</h2><ul>`;
     for (const [, e] of items) {
       const link = e.ticket || e.url;
@@ -292,9 +318,21 @@ document.addEventListener('click', ev => {
   else if (b.dataset.act === 'txt') download('ma-selection.txt', exportText(), 'text/plain;charset=utf-8');
   else if (b.dataset.act === 'doc') download('ma-selection.doc', exportDoc(), 'application/msword');
   else if (b.dataset.act === 'link') {
-    const picks = Object.entries(sel).filter(([id]) => D.events[id]).map(([id, e]) => [id, e.month]);
+    const picks = Object.entries(sel).filter(([id]) => D.events[id]).map(([id, e]) => [id, e.month, e.final ? 1 : 0]);
     copy(location.origin + location.pathname + '#sel=' + encodeURIComponent(JSON.stringify(picks)),
          'Lien copié : ouvrez-le sur l\'autre appareil');
+  }
+  else if (b.classList.contains('keep')) {
+    const e = sel[b.closest('.ev').dataset.id];
+    if (!e.final && finalsIn(monthOf(e)) >= MAX_FINAL)
+      return toast(`Déjà ${MAX_FINAL} retenus en ${monthName(monthOf(e)).toLowerCase()} : retirez-en un d'abord`);
+    e.final = !e.final; save();
+    const y = window.scrollY; render(); window.scrollTo(0, y);
+  }
+  else if (b.dataset.act === 'all-picks' || b.dataset.act === 'final-only') {
+    finalOnly = b.dataset.act === 'final-only';
+    try { localStorage.setItem('programme-culturel-final-only', finalOnly ? '1' : '0'); } catch (e) {}
+    render();
   }
   else if (b.dataset.act === 'compact') {
     compact = !compact; try { localStorage.setItem('programme-culturel-compact', compact ? '1' : '0'); } catch (e) {}
