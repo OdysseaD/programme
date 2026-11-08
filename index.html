@@ -158,11 +158,13 @@ function grouped() {
     [monthName(k), groups[k].sort((a, b) => (a[1].start + a[1].title).localeCompare(b[1].start + b[1].title)), k]);
 }
 
-// same show picked twice (same title, e.g. two runs or two venues): the other months it is in
+// same show picked twice: same title and type at another venue (a tour, a run moving on).
+// At a single venue a repeated title is a series of different programmes
+// ("Orchestre de Paris / …", "Une heure avec"), the same show would share its URL.
 const showKey = e => norm(e.title).replace(/[^a-z0-9]+/g, ' ').trim();
 function twinMonths(id, e) {
   const months = Object.entries(sel)
-    .filter(([other, o]) => other !== id && showKey(o) === showKey(e))
+    .filter(([other, o]) => other !== id && showKey(o) === showKey(e) && o.type === e.type && o.venue !== e.venue)
     .map(([, o]) => monthOf(o));
   return [...new Set(months)].sort();
 }
