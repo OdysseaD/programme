@@ -303,8 +303,14 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 1800);
 }
 
-async function copy(text, msg = 'Copié : collez dans WhatsApp') {
-  try { await navigator.clipboard.writeText(text); }
+// html: also put a rich-text version on the clipboard (a clickable "Sélection culturelle"
+// in Mail, Notes, Gmail...); apps that only take plain text (WhatsApp) get `text`
+async function copy(text, msg = 'Copié : collez dans WhatsApp', html = null) {
+  try {
+    if (html && window.ClipboardItem) await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([html], {type: 'text/html'}), 'text/plain': new Blob([text], {type: 'text/plain'})})]);
+    else await navigator.clipboard.writeText(text);
+  }
   catch (e) {
     const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
     ta.select(); document.execCommand('copy'); ta.remove();
@@ -337,8 +343,8 @@ document.addEventListener('click', ev => {
   else if (b.dataset.act === 'link') {
     const picks = Object.entries(sel).filter(([id]) => D.events[id])
       .map(([id, e]) => code(id) + monthCode(monthOf(e)) + (e.final ? '1' : '0')).join('');
-    copy(location.origin + location.pathname + '#s=' + picks,
-         'Lien copié : ouvrez-le sur l\'autre appareil');
+    const url = location.origin + location.pathname + '#s=' + picks;
+    copy(url, 'Lien « Sélection culturelle » copié', `<a href="${esc(url)}">Sélection culturelle</a>`);
   }
   else if (b.classList.contains('keep')) {
     const e = sel[b.closest('.ev').dataset.id];
