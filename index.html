@@ -42,6 +42,15 @@ h3{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute
 .btn{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer}
 .btn.alt{background:var(--card);color:var(--accent)}
 @media (max-width:600px){h1{font-size:16px}.sub{font-size:12px;margin-bottom:8px}.tab{padding:5px 12px}}
+.ev[draggable=true]{cursor:grab}
+.ev.dragging{opacity:.4}
+.mv{font-size:13px;color:var(--muted);margin-top:4px}
+.mv select{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 4px}
+.month{border-radius:10px;padding:0 6px 4px;margin:0 -6px}
+.month.ok{outline:2px dashed var(--line)}
+.month.over{outline:2px dashed var(--accent);background:var(--accent-soft)}
+.month.no{opacity:.35}
+.drop{color:var(--muted);font-size:14px;padding:12px 0;text-align:center}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 </style>
@@ -104,7 +113,11 @@ function card(id, e, short, month) {
     if (e.ticket) h += `<div class="links"><a href="${esc(e.ticket)}" target="_blank" rel="noopener">Billets</a></div>`;
   }
   if (tab === 'sel' && !D.events[id]) h += `<div class="gone">Plus au programme cette semaine</div>`;
-  return h + '</div></div>';
+  if (tab === 'sel' && validMonths(e).length > 1)
+    h += `<div class="mv">Mois : <select>${validMonths(e).map(k =>
+      `<option value="${k}"${k === monthOf(e) ? ' selected' : ''}>${monthName(k)}</option>`).join('')}</select></div>`;
+  h += '</div></div>';
+  return tab === 'sel' && validMonths(e).length > 1 ? h.replace('<div class="ev', '<div draggable="true" class="ev') : h;
 }
 
 function renderAll() {
@@ -120,18 +133,27 @@ function renderAll() {
   return h || '<div class="empty">Aucun événement ne correspond.</div>';
 }
 
-// selection grouped by the month it was starred in (older picks: the month it opens)
+const monthName = k => `${D.monthNames[+k.slice(5)]} ${k.slice(0, 4)}`;
+// the programme's months (today's month → end of season) an event runs in
+const validMonths = e => D.months.map(m => m.key).filter(k => k >= e.start.slice(0, 7) && k <= e.end.slice(0, 7));
+// the month it was starred in or moved to, if still valid; else the first it runs in
+function monthOf(e) {
+  const ok = validMonths(e);
+  if (ok.includes(e.month)) return e.month;
+  return ok[0] || (e.start > new Date().toISOString().slice(0, 10) ? e.start.slice(0, 7) : D.months[0].key);
+}
+
 function grouped() {
-  const today = new Date().toISOString().slice(0, 10);
   const groups = {};
-  for (const [id, e] of Object.entries(sel)) {
-    const from = e.start < today ? today : e.start;
-    (groups[e.month || from.slice(0, 7)] ||= []).push([id, e]);
-  }
-  return Object.keys(groups).sort().map(k => {
-    const [y, m] = k.split('-');
-    return [`${D.monthNames[+m]} ${y}`, groups[k].sort((a, b) => (a[1].start + a[1].title).localeCompare(b[1].start + b[1].title))];
-  });
+  for (const [id, e] of Object.entries(sel)) (groups[monthOf(e)] ||= []).push([id, e]);
+  return Object.keys(groups).sort().map(k =>
+    [monthName(k), groups[k].sort((a, b) => (a[1].start + a[1].title).localeCompare(b[1].start + b[1].title)), k]);
+}
+
+function moveTo(id, k) {
+  if (!sel[id] || !validMonths(sel[id]).includes(k)) return;
+  sel[id].month = k; save(); render();
+  toast(`Déplacé en ${monthName(k).toLowerCase()}`);
 }
 
 function renderSel() {
@@ -143,9 +165,10 @@ function renderSel() {
     <button class="btn alt" data-act="doc">Télécharger (Word)</button>
     <button class="btn alt" data-act="link">Lien vers un autre appareil</button>
     <button class="btn alt" data-act="clear">Tout effacer</button></div>`;
-  for (const [month, items] of g) {
+  for (const [month, items, k] of g) {
     const shown = items.filter(([, e]) => matches(e));
-    if (shown.length) h += `<h2>${esc(month)}</h2>` + shown.map(([id, e]) => card(id, e, false)).join('');
+    if (shown.length) h += `<section class="month" data-key="${k}"><h2>${esc(month)}</h2>`
+      + shown.map(([id, e]) => card(id, e, false)).join('') + '</section>';
   }
   return h;
 }
@@ -229,6 +252,38 @@ document.addEventListener('click', ev => {
          'Lien copié : ouvrez-le sur l\'autre appareil');
   }
   else if (b.dataset.act === 'clear' && confirm('Effacer toute la sélection ?')) { sel = {}; save(); render(); }
+});
+// "Ma sélection": drag a card to another month it runs in (or use its "Mois" menu).
+// While dragging, months it does not run in are dimmed and refuse the drop;
+// valid months with no pick yet get an empty drop zone.
+let dragId = null;
+document.addEventListener('dragstart', ev => {
+  const c = ev.target.closest && ev.target.closest('.ev[draggable]'); if (!c) return;
+  dragId = c.dataset.id; c.classList.add('dragging');
+  ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', dragId);
+  const ok = validMonths(sel[dragId]);
+  const out = $('#out');
+  for (const k of ok) if (!out.querySelector(`.month[data-key="${k}"]`)) {
+    const z = document.createElement('section');
+    z.className = 'month'; z.dataset.key = k;
+    z.innerHTML = `<h2>${esc(monthName(k))}</h2><div class="drop">Déposer ici</div>`;
+    const next = [...out.querySelectorAll('.month')].find(x => x.dataset.key > k);
+    next ? out.insertBefore(z, next) : out.appendChild(z);
+  }
+  out.querySelectorAll('.month').forEach(x => x.classList.add(ok.includes(x.dataset.key) ? 'ok' : 'no'));
+});
+document.addEventListener('dragover', ev => {
+  const m = dragId && ev.target.closest('.month');
+  document.querySelectorAll('.month.over').forEach(x => x !== m && x.classList.remove('over'));
+  if (m && m.classList.contains('ok')) { ev.preventDefault(); m.classList.add('over'); }
+});
+document.addEventListener('drop', ev => {
+  const m = dragId && ev.target.closest('.month.ok'); if (!m) return;
+  ev.preventDefault(); const id = dragId; dragId = null; moveTo(id, m.dataset.key);
+});
+document.addEventListener('dragend', () => { if (dragId) { dragId = null; render(); } });
+document.addEventListener('change', ev => {
+  if (ev.target.closest('.mv')) moveTo(ev.target.closest('.ev').dataset.id, ev.target.value);
 });
 $('#q').addEventListener('input', ev => { q = norm(ev.target.value.trim()); render(); });
 render();
