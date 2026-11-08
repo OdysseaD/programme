@@ -101,15 +101,32 @@ try { sel = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
 // (keeping the month it was starred in)
 for (const id in sel) if (D.events[id]) sel[id] = {...D.events[id], month: sel[id].month, final: sel[id].final};
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(sel)); } catch (e) {} };
-// a "#sel=" link made on another device adds its picks to this one
+// "Lien vers un autre appareil": #s= then 9 characters per pick, a 6-character
+// code for the event (hash of its id, stable from week to week), its month
+// (2 base-36 characters, months since 2020) and 1 if it is "retenu".
+// Older links (#sel=, JSON) are still read.
+const code = id => {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 2176782336).toString(36).padStart(6, '0');
+};
+const monthCode = k => ((+k.slice(0, 4) - 2020) * 12 + +k.slice(5) - 1).toString(36).padStart(2, '0');
+const codeMonth = c => { const n = parseInt(c, 36); return `${2020 + Math.floor(n / 12)}-${String(n % 12 + 1).padStart(2, '0')}`; };
 let imported = 0;
-if (location.hash.startsWith('#sel=')) {
-  try {
-    for (const [id, month, final] of JSON.parse(decodeURIComponent(location.hash.slice(5))))
-      if (D.events[id] && !sel[id]) { sel[id] = {...D.events[id], month, final: !!final}; imported++; }
-  } catch (e) {}
-  history.replaceState(null, '', location.pathname);
-}
+const addPick = (id, month, final) => {
+  if (D.events[id] && !sel[id]) { sel[id] = {...D.events[id], month, final: !!final}; imported++; }
+};
+try {
+  if (location.hash.startsWith('#sel=')) {
+    for (const [id, month, final] of JSON.parse(decodeURIComponent(location.hash.slice(5)))) addPick(id, month, final);
+  } else if (location.hash.startsWith('#s=')) {
+    const byCode = {};
+    for (const id in D.events) byCode[code(id)] = id;
+    for (const m of location.hash.slice(3).matchAll(/([0-9a-z]{6})([0-9a-z]{2})([01])/g))
+      if (byCode[m[1]]) addPick(byCode[m[1]], codeMonth(m[2]), m[3] === '1');
+  }
+} catch (e) {}
+if (location.hash.startsWith('#s')) history.replaceState(null, '', location.pathname);
 save();
 
 let tab = 'all', q = '', types = new Set();
@@ -318,8 +335,9 @@ document.addEventListener('click', ev => {
   else if (b.dataset.act === 'txt') download('ma-selection.txt', exportText(), 'text/plain;charset=utf-8');
   else if (b.dataset.act === 'doc') download('ma-selection.doc', exportDoc(), 'application/msword');
   else if (b.dataset.act === 'link') {
-    const picks = Object.entries(sel).filter(([id]) => D.events[id]).map(([id, e]) => [id, e.month, e.final ? 1 : 0]);
-    copy(location.origin + location.pathname + '#sel=' + encodeURIComponent(JSON.stringify(picks)),
+    const picks = Object.entries(sel).filter(([id]) => D.events[id])
+      .map(([id, e]) => code(id) + monthCode(monthOf(e)) + (e.final ? '1' : '0')).join('');
+    copy(location.origin + location.pathname + '#s=' + picks,
          'Lien copié : ouvrez-le sur l\'autre appareil');
   }
   else if (b.classList.contains('keep')) {
