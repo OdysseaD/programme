@@ -50,6 +50,7 @@ h3{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute
 .month.ok{outline:2px dashed var(--line)}
 .month.over{outline:2px dashed var(--accent);background:var(--accent-soft)}
 .month.no{opacity:.35}
+.warn{font-size:12px;color:var(--accent);margin-top:3px}
 .drop{color:var(--muted);font-size:14px;padding:12px 0;text-align:center}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
@@ -114,6 +115,12 @@ function card(id, e, short, month) {
     if (e.ticket) h += `<div class="links"><a href="${esc(e.ticket)}" target="_blank" rel="noopener">Billets</a></div>`;
   }
   if (tab === 'sel' && !D.events[id]) h += `<div class="gone">Plus au programme cette semaine</div>`;
+  if (tab === 'sel') {
+    const twins = twinMonths(id, e);
+    const here = twins.includes(monthOf(e)), elsewhere = twins.filter(k => k !== monthOf(e)).map(k => monthName(k).toLowerCase());
+    if (elsewhere.length) h += `<div class="warn">⚠ Ce spectacle est aussi dans votre sélection en ${elsewhere.join(', ')}</div>`;
+    if (here) h += `<div class="warn">⚠ Ce spectacle est sélectionné deux fois ce mois-ci</div>`;
+  }
   if (tab === 'sel' && validMonths(e).length > 1)
     h += `<div class="mv">Mois : <select>${validMonths(e).map(k =>
       `<option value="${k}"${k === monthOf(e) ? ' selected' : ''}>${monthName(k)}</option>`).join('')}</select></div>`;
@@ -149,6 +156,15 @@ function grouped() {
   for (const [id, e] of Object.entries(sel)) (groups[monthOf(e)] ||= []).push([id, e]);
   return Object.keys(groups).sort().map(k =>
     [monthName(k), groups[k].sort((a, b) => (a[1].start + a[1].title).localeCompare(b[1].start + b[1].title)), k]);
+}
+
+// same show picked twice (same title, e.g. two runs or two venues): the other months it is in
+const showKey = e => norm(e.title).replace(/[^a-z0-9]+/g, ' ').trim();
+function twinMonths(id, e) {
+  const months = Object.entries(sel)
+    .filter(([other, o]) => other !== id && showKey(o) === showKey(e))
+    .map(([, o]) => monthOf(o));
+  return [...new Set(months)].sort();
 }
 
 function moveTo(id, k) {
