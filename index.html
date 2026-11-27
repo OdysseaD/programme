@@ -148,6 +148,17 @@ details.rem summary{cursor:pointer;font-size:13px;font-weight:800;text-transform
 .calday{font-size:18px;color:var(--text);margin:22px 0 6px}
 .calhint{font-size:13px;font-weight:700;text-transform:uppercase;text-align:center;padding:14px 0}
 @media (min-width:601px){.cd{min-height:92px}.ci{font-size:10px}}
+.so{display:inline-block;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;padding:3px 6px;margin:2px 6px 0 0;border:2px solid var(--line);background:var(--line);color:#fff}
+.so.p{background:#fff;color:var(--text)}
+.som{display:inline-block;font-size:8px;font-weight:900;text-transform:uppercase;background:var(--line);color:#fff;padding:0 2px;margin-right:2px;vertical-align:1px}
+.som.p{background:#fff;color:var(--text)}
+.som i{font-style:normal}
+.som .w{display:none}
+.calstrip .som .w{display:inline}.calstrip .som .s{display:none}
+@media (min-width:601px){.som .w{display:inline}.som .s{display:none}}
+.legend{font-size:11px;font-weight:700;text-transform:uppercase;margin-top:6px}
+.legend .som{font-size:10px}
+.checked{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:-8px 0 12px}
 .dlg{position:fixed;inset:0;z-index:20;background:rgba(13,13,13,.55);display:flex;align-items:center;justify-content:center;padding:16px}
 .dlg[hidden]{display:none}
 .dlg>div{background:#fff;border:3px solid var(--line);border-top:10px solid var(--accent);padding:20px;max-width:380px;width:100%}
@@ -286,6 +297,30 @@ function matches(e) {
   return !q || norm(`${e.title} ${e.venue} ${e.summary}`).includes(q);
 }
 
+// ---- Sold-out status: alerts/availability.json of the sync repo, written by the
+// alerts workflow 3 times a day ({checked, shows: {<event url>: {status complet |
+// presque | dispo, sold_out, of, unit dates | catégories}}}). Read with the sync
+// token on opening and at each sync, the last copy kept for offline. A show it
+// does not list (or no token) shows nothing; "dispo" shows nothing either.
+const AKEY = 'programme-culturel-availability', AVAIL_FILE = 'alerts/availability.json';
+let avail = {};
+try { avail = JSON.parse(localStorage.getItem(AKEY)) || {}; } catch (e) {}
+const availOf = id => (token && avail.shows && avail.shows[id]) || null;
+function availBadge(id) {
+  const a = availOf(id);
+  if (!a) return '';
+  if (a.status === 'complet') return '<span class="so">Complet</span>';
+  if (a.status !== 'presque') return '';
+  const what = a.unit === 'dates' ? 'dates complètes' : `${esc(a.unit || 'catégories')} épuisées`;
+  return `<span class="so p">Presque complet${a.of ? ` (${a.sold_out}/${a.of} ${what})` : ''}</span>`;
+}
+// in a calendar chip: a short marker (✕ / ! in the narrow day cells of a phone, the word elsewhere)
+const availMark = id => {
+  const a = availOf(id);
+  return !a ? '' : a.status === 'complet' ? '<b class="som"><i class="w">Complet</i><i class="s">✕</i></b>'
+    : a.status === 'presque' ? '<b class="som p"><i class="w">Presque</i><i class="s">!</i></b>' : '';
+};
+
 // someone's status on a show, read-only: "Selma · ✓ Retenu · 🎟 Acheté" (or "☆ Sélection")
 const pill = (name, p, cls) => `<span class="pill ${cls}">${esc(name)} · ${p.final ? '✓ Retenu' : '☆ Sélection'}${p.bought ? ' · 🎟 Acheté' : ''}</span>`;
 
@@ -305,6 +340,7 @@ function card(id, e, short, month) {
   if (theirs && !ro) pills += pill(them.name, theirs, on ? 'both' : 'them');
   if (ro) pills += (e.final ? '<span class="st final">✓ Retenu</span>' : '') + (e.bought ? '<span class="st">🎟 Acheté</span>' : '')
     + (on ? pill('Moi', sel[id], 'both') : '');
+  pills = availBadge(id) + pills;
   if (pills) h += `<div class="pills">${pills}</div>`;
   if (!short) {
     if (e.summary) h += `<div class="sum">${esc(e.summary)}</div>`;
@@ -448,6 +484,10 @@ function renderSel() {
     ${token ? '<button class="btn alt" data-act="sync-link">☁︎ Activer sur un autre appareil</button>' : ''}
     ${pushBtn()}`;
   h += '</div>';
+  if (token && avail.checked) {
+    const c = new Date(avail.checked), sameDay = c.toDateString() === new Date().toDateString();
+    h += `<div class="checked">Billetterie vérifiée ${sameDay ? '' : `le ${c.toLocaleDateString('fr-FR', {day: 'numeric', month: 'numeric'})} `}à ${c.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}</div>`;
+  }
   if (finalOnly && !nFinal) h += `<div class="empty">${view === 'me'
     ? `Touchez « Retenir » sur vos favoris (${MAX_FINAL} au plus par mois) : seuls ceux-là s'afficheront ici, et seront exportés.`
     : view === 'other' ? `${esc(them.name)} n'a encore rien retenu.` : 'Aucun spectacle retenu par vous deux pour l\'instant.'}</div>`;
@@ -479,7 +519,7 @@ const isLong = e => daysLong(e) >= LONG_RUN;
 const calItems = () => Object.entries(viewPicks()).filter(([id, e]) => (!finalOnly || isFinal(id, e)) && matches(e))
   .sort((a, b) => (a[1].start + a[1].title).localeCompare(b[1].start + b[1].title));
 const ownerCls = id => view === 'both' ? 'both' : view === 'other' ? (sel[id] ? 'both' : 'them') : (other[id] ? 'both' : 'me');
-const chip = ([id, e]) => `<span class="ci ${ownerCls(id)}${isFinal(id, e) ? ' fin' : ''}">${e.bought ? '🎟 ' : ''}${esc(e.title)}</span>`;
+const chip = ([id, e]) => `<span class="ci ${ownerCls(id)}${isFinal(id, e) ? ' fin' : ''}">${availMark(id)}${e.bought ? '🎟 ' : ''}${esc(e.title)}</span>`;
 
 function renderCal() {
   const keys = D.months.map(m => m.key);
@@ -494,7 +534,7 @@ function renderCal() {
     + `<h2>${esc(monthName(calMonth))}</h2>`
     + `<button class="calnav" ${i < keys.length - 1 ? `data-cal-go="${keys[i + 1]}"` : 'disabled'} title="Mois suivant">›</button></div>`;
   if (long.length) h += `<button class="calstrip${calDay === 'long' ? ' on' : ''}" data-cal-day="long"><span class="lbl">Toute la période</span>`
-    + long.slice(0, STRIP_MAX).map(([id, e]) => `<span class="ci ${ownerCls(id)}${isFinal(id, e) ? ' fin' : ''}">${e.bought ? '🎟 ' : ''}${esc(e.title)}`
+    + long.slice(0, STRIP_MAX).map(([id, e]) => `<span class="ci ${ownerCls(id)}${isFinal(id, e) ? ' fin' : ''}">${availMark(id)}${e.bought ? '🎟 ' : ''}${esc(e.title)}`
       + ` <i>· jusqu'au ${date(e.end)}</i></span>`).join('')
     + (long.length > STRIP_MAX ? `<span class="more">+ ${long.length - STRIP_MAX} autres : touchez pour tout voir</span>` : '') + '</button>';
   h += '<div class="calgrid">' + DOW.map(d => `<div class="dow">${d}</div>`).join('');
@@ -507,6 +547,8 @@ function renderCal() {
       + `<span class="dn">${d}</span>${its.slice(0, 3).map(chip).join('')}${its.length > 3 ? `<span class="more">+${its.length - 3}</span>` : ''}</button>`;
   }
   h += '</div>';
+  if (short.some(([id]) => availOf(id) && availOf(id).status !== 'dispo'))
+    h += '<div class="legend"><b class="som"><i class="s">✕</i><i class="w">Complet</i></b> complet · <b class="som p"><i class="s">!</i><i class="w">Presque</i></b> presque complet</div>';
   // the chosen day's shows (long runs included), as cards
   if (calDay === 'long' && long.length)
     h += `<h3 class="calday">Toute la période · ${long.length}</h3>` + long.map(([id, e]) => card(id, e, false)).join('');
@@ -817,6 +859,12 @@ async function sync() {
         break;
       } catch (e) { if (!['409', '422'].includes(e.message)) throw e; }  // changed meanwhile: merge again
     }
+    // sold-out status (its own try: a failure here must not mark the sync as failed)
+    try {
+      const a = (await apiFile(AVAIL_FILE, 'GET')).data || {}, before = JSON.stringify(avail);
+      if (a.shows) { avail = a; try { localStorage.setItem(AKEY, JSON.stringify(avail)); } catch (e) {} }
+      if (JSON.stringify(avail) !== before && !dragId) { const y = window.scrollY; render(); window.scrollTo(0, y); }
+    } catch (e) {}
     // the other person's picks, read only
     const theirs = await apiFile(them.file, 'GET'), beforeOther = JSON.stringify(other);
     other = theirs.data.picks || {}; refresh(); reattach(other, false); store();
